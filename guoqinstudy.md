@@ -1,4 +1,6 @@
-此文档为徐员外2019年10月1日期间学习总结, 代码及相关文档已上传至 github
+此文档为徐员外2019年10月1日期间学习总结, 代码及相关文档已上传至 
+
+github：https://github.com/joehochina/guoqin
 
 
 
@@ -589,7 +591,7 @@ public class ContainerNotSafeDemo {
     }
 ```
 
-## 六、线程锁机制
+# 六、线程锁机制
 
 **公平锁**
     是指多个线程按照申请锁的顺序来获取锁类似排队打饭 先来后到
@@ -1156,7 +1158,7 @@ public class BlockingQueueDemo {
 
 **生产消费模式**
 
-传统版
+**传统版**
 
 ```java
 package com.duoduo.study.thread;
@@ -1242,7 +1244,7 @@ public class ProdConsumerTraditionDemo {
 
 
 
-阻塞队列版
+**阻塞队列版**
 
 ```java
 package com.duoduo.study.thread;
@@ -1602,4 +1604,62 @@ public class MyThreadPoolDemo {
 }
 
 ```
+
+**死锁**
+
+```java
+package com.duoduo.study.thread;
+
+import org.omg.CORBA.PRIVATE_MEMBER;
+
+import java.util.concurrent.TimeUnit;
+
+class HoldLockThread implements Runnable{
+
+    private String lockA;
+    private String lockB;
+
+    public HoldLockThread(String lockA, String lockB) {
+        this.lockA = lockA;
+        this.lockB = lockB;
+    }
+
+    @Override
+    public void run() {
+        synchronized (lockA){
+            System.out.println(Thread.currentThread().getName()+"\t 自己持有："+lockA+"\t尝试获取："+lockB);
+            try {
+                TimeUnit.SECONDS.sleep(2);
+            }catch (InterruptedException e){e.printStackTrace();}
+            synchronized (lockB){
+                System.out.println(Thread.currentThread().getName()+"\t 自己持有："+lockB+"\t尝试获取："+lockA);
+            }
+        }
+
+    }
+}
+
+/**
+ * 死锁是指两个或两个以上的进程在执行的过程中
+ * 因争夺资源而造成的一种互相等待的现象
+ * 若无外力干涉那他们将无法推进下去
+ */
+public class DeadLockDemo {
+    public static void main(String[] args) {
+        new Thread(new HoldLockThread("lockA","lockB"),"Thread AA").start();
+        new Thread(new HoldLockThread("lockB","lockA"),"Thread BB").start();
+    }
+
+    /**
+     * 查看进程，发现死锁线程
+     * linux ps -ef
+     * window jps -l 结合 jstack "进程编号"
+     */
+}
+
+```
+
+# 七、JVM
+
+![](img/jvm.png)
 
