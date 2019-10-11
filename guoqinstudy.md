@@ -1663,3 +1663,584 @@ public class DeadLockDemo {
 
 ![](img/jvm.png)
 
+## 7.1 gc
+
+```java
+package com.duoduo.study.jvm.gc;
+
+import java.util.Random;
+
+/**
+ * JVM参数：-Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+UseG1GC
+ */
+public class G1Demo {
+
+	public static void main(String[] args) {
+		String str = "weiwozongheng";
+		while (true) {
+			str += str + new Random().nextInt(77777777) + new Random().nextInt(88888888);
+			str.intern();
+		}
+	}
+
+}
+
+
+package com.duoduo.study.jvm.gc;
+
+import java.util.Random;
+
+/**
+ * 1
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags -XX:+UseSerialGC        (DefNew + Tenured)
+ * 
+ * 2
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags -XX:+UseParNewGC        (ParNew + Tenured)
+ * 
+ * 备注情况：Java HotSpot(TM) 64-Bit Server VM warning:
+ * Using the ParNew young collector with the Serial old collector is deprecated and will likely be removed in a future release
+ * 
+ * 3
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags -XX:+UseParallelGC        (PSYoungGen + ParOldGen)
+ * 
+ * 4
+ * 4.1
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags -XX:+UseParallelOldGC        (PSYoungGen + ParOldGen)
+ * 4.2 不加就是默认UseParallelGC
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags        (PSYoungGen + ParOldGen)
+ * 
+ * 5
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags -XX:+UseConcMarkSweepGC    (par new generation + concurrent mark-sweep)
+ * 
+ * 6
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags -XX:+UseG1GC    后面单独讲解G1
+ * 
+ * 7 （理论知道即可，实际中已经被优化掉了，没有了）
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags -XX:+UseSerialOldGC
+ * 
+ * 下面是故意繁琐配置，主要是为了学习，一般生产环境不这么配置：
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags -XX:+UseParallelGC -XX:+UseParallelOldGC    (PSYoungGen + ParOldGen)
+ * 
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:+PrintCommandLineFlags -XX:+ParNewGC -XX:+UseConcMarkSweepGC    (par new generation + concurrent mark-sweep generation)
+ */
+public class GCDemo {
+
+	public static void main(String[] args) {
+		System.out.println("********** GCDemo hello **********");
+		try {
+			String str = "weiwozongheng";
+			while (true) {
+				str += str + new Random().nextInt(77777777) + new Random().nextInt(88888888);
+				str.intern();
+			}
+		} catch (Throwable throwable) {
+			throwable.printStackTrace();
+		}
+	}
+
+}
+
+
+package com.duoduo.study.jvm.gc;
+
+public class HelloGC {
+
+	public static void main(String[] args) throws Exception {
+		/*System.out.println("********** HelloGC **********");
+
+		Thread.sleep(Integer.MAX_VALUE);*/
+
+		/*// 返回java虚拟机中的内存总量
+		long totalMemory = Runtime.getRuntime().totalMemory();
+		System.out.println("totalMemory（-Xms） = " + totalMemory + " （字节）、" + (totalMemory / (double) 1024 / 1024) + " MB");
+		// 返回java虚拟机试图使用的最大内存量
+		long maxMemory = Runtime.getRuntime().maxMemory();
+		System.out.println("maxMemory（-Xmx） = " + maxMemory + " （字节）、" + (maxMemory / (double) 1024 / 1024) + " MB");*/
+
+		/*// -Xms10m -Xmx10m
+		System.out.println("********** HelloGC **********");
+		byte[] byteArray = new byte[50 * 1024 * 1024];*/
+	}
+
+}
+
+```
+
+## 7.2 GCROOTS
+
+```java
+package com.duoduo.study.jvm.gcroots;
+
+/**
+ * 再java中，可作为的GC Roots对象有：
+ * 
+ * 1. 虚拟机栈（栈帧中的局部变量区，也叫做局部变量）
+ * 2. 方法区中的类静态属性引用的对象
+ * 3. 方法区中常量引用的对象
+ * 4. 本地方法栈中JNI（Native方法）引用的对象
+ */
+public class GCRootDemo {
+	private byte[] byteArray = new byte[100 * 1024 * 1024];
+	
+	public static void main(String[] args) {
+		m1();
+	}
+	
+	public static void m1() {
+		GCRootDemo gcRootDemo = new GCRootDemo();
+		
+		System.gc();
+		
+		System.out.println("第一次GC完成");
+	}
+
+}
+
+```
+
+
+
+## 7.3 OOM
+
+```JAVA
+package com.duoduo.study.jvm.oom;
+
+import java.nio.ByteBuffer;
+
+/**
+ * 配置参数：
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:MaxDirectMemorySize=5m
+ * 
+ * 故障现象：
+ * Exception in thread "main" java.lang.OutOfMemoryError: Direct buffer memory
+ * 
+ * 导致原因：
+ * 写NIO程序经常使用ByteBuffer来读取或者写入数据，这是一种基于通道（Channel）与缓冲区（Buffer）的I/O方式。
+ * 它可以使用Native函数库直接分配堆外内存，然后通过一个存储在Java堆里面的DirectByteBuffer对象作为这块内存的引用进行操作。
+ * 这样能在一些场景中显著提高性能，因为避免了在Java堆和Native堆中唠会复制数据。
+ * 
+ * ByteBuffer.allocate(capability) 第一种方式，分配JVM堆内存，属于GC管辖范围，由于需要拷贝所以速度相对较慢。
+ * ByteBuffer.allocateDirect(capability) 第二种方式， 分配OS本地内存，不属于GC管辖范围，由于不需要内存拷贝所以速度相对较快
+ * 
+ * 但如果不断分配本地内存，堆内存很少使用，那么JVM就不需要执行GC，DirectByteBuffer对象们就不会被回收。
+ * 这时候堆内存充足，但本地内存可能已经使用光了，再次尝试分配本地内存就会出现OutOfMemoryError，那程序就直接崩溃了。
+ */
+public class DirectBufferMemoryDemo {
+
+	public static void main(String[] args) {
+		System.out.println("配置的maxDirectMemory: " + (sun.misc.VM.maxDirectMemory() / 1024 / 1024) + "MB");
+		try {
+			Thread.sleep(3000);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
+		ByteBuffer byteBuffer = ByteBuffer.allocateDirect(6 * 1024 * 1024);
+	}
+
+}
+
+```
+
+```JAVA
+package com.duoduo.study.jvm.oom;
+
+import java.util.LinkedList;
+import java.util.List;
+
+/**
+ * JVM参数配置演示
+ * -Xms10m -Xmx10m -XX:+PrintGCDetails -XX:MaxDirectMemorySize=5m
+ * 
+ * GC回收时间过长时会抛出OutOfMemoryError。
+ * 过长的定义是，超过99%的时间用来做GC并且回收了不到2%的堆内存，连续多次GC都只是回收了不到2%的极端情况下才会抛出。
+ * 假如不抛出GC overhead limit 错误会发生什么情况呢？
+ * 那就是GC清理的这么点儿内存很快会被再次填满，迫使GC再次执行，这样就形成恶性循环。
+ * CPU使用率一直是100%，而GC却没有任何成果。
+ */
+public class GCOverheadDemo {
+
+	public static void main(String[] args) {
+		int i = 0;
+		List<String> list = new LinkedList<String>();
+		try {
+			while (true) {
+				list.add(String.valueOf(i++).intern());
+			}
+		} catch (Throwable throwable) {
+			System.out.println("********** i = " + i);
+			throwable.printStackTrace();
+			throw throwable;
+		}
+	}
+
+}
+
+```
+
+```JAVA
+package com.duoduo.study.jvm.oom;
+
+import java.util.Random;
+
+/**
+ * -Xms5m -Xmx5m -XX:+PrintGCDetails
+ */
+public class JavaHeapSpaceDemo {
+
+	public static void main(String[] args) {
+		String str = "weiwozongheng";
+		while (true) {
+			// Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
+			str += str + new Random().nextInt(11111111) + new Random().nextInt(222222);
+			str.intern();
+		}
+	}
+
+}
+
+```
+
+```JAVA
+package com.duoduo.study.jvm.oom;
+
+import java.lang.reflect.Method;
+
+import net.sf.cglib.proxy.Enhancer;
+import net.sf.cglib.proxy.MethodInterceptor;
+import net.sf.cglib.proxy.MethodProxy;
+
+/**
+ * JVM参数：-XX:MetaspaceSize=8m -XX:MaxMetaspaceSize=8m
+ * 
+ * Java8及之后的版本使用Metaspace来替换永久代。
+ * 
+ * Metaspace是方法区在HotSpot中的实现，它与永久代最大的区别在于：Metaspace并不在虚拟机内存中而是使用本地内存。
+ * 也即在java8中，class metadata（the virtual machines internal presentation od java class）
+ * 被存储在叫做Metaspace的native memory。
+ * 
+ * 永久代（java8后被元空间（Metaspace）取代了）存放了以下信息：
+ * 虚拟机加载的类信息
+ * 常量池
+ * 静态变量
+ * 即时编译后的代码
+ * 
+ * 模拟Metaspace空间溢出，我们不断生成类往元空间灌，类占据的空间总是会超过Metaspace指定的空间大小的。
+ */
+public class MetaspaceDemo {
+
+	static class OomTest {
+	}
+
+	public static void main(String[] args) {
+		int i = 0;
+		try {
+			while (true) {
+				i++;
+
+				Enhancer enhancer = new Enhancer();
+				enhancer.setSuperclass(OomTest.class);
+				enhancer.setUseCache(false);
+				enhancer.setCallback(new MethodInterceptor() {
+
+					@Override
+					public Object intercept(Object obj, Method method, Object[] objects, MethodProxy methodProxy)
+							throws Throwable {
+						return methodProxy.invokeSuper(obj, objects);
+					}
+				});
+				enhancer.create();
+			}
+		} catch (Exception e) {
+			System.err.println("创建 " + i + " 次后发生异常！");
+			// Caused by: java.lang.OutOfMemoryError: Metaspace
+			e.printStackTrace();
+		}
+	}
+
+}
+
+```
+
+```JAVA
+package com.duoduo.study.jvm.oom;
+
+/**
+ * -Xms5m -Xmx5m -XX:+PrintGCDetails
+ */
+public class StackOverflowErrorDemo {
+
+	public static void main(String[] args) {
+		StackOverflowError();
+	}
+
+	private static void StackOverflowError() {
+		// Exceprion in thread "main" java.lang.StackOverflowError
+		StackOverflowError();
+	}
+
+}
+
+```
+
+```JAVA
+package com.duoduo.study.jvm.oom;
+
+/**
+ * 高并发请求服务器时，经常出现如下异常：
+ * java.lang.OutOfMemoryError: unable to create new native thread
+ * 准确地讲，该native thread异常与对应的操作系统平台有关。
+ * 
+ * 导致原因：
+ * 1. 应用创建了太多的线程，一个应用进程创建多个线程，超过系统承载极限。
+ * 2. 服务器并不允许你的应用程序创建这么多的线程，linux系统默认允许单个进程创建的线程数是1024个。
+ * 应用创建线程超过这个数量，就会报java.lang.OutOfMemoryError: unable to create new native thread
+ * 
+ * 解决办法：
+ * 1. 想办法降低应用程序创建的线程数量，分析应用是否真的需要创建这么多线程。如果不是，修改相关代码讲线程数降到最低。
+ * 2. 对于有的应用，确实需要创建很多线程，远超过linux系统默认的1024个线程的限制，可以通过修改linux服务器配置，扩大上限。
+ */
+public class UnableCreateNewThreadDemo {
+
+	public static void main(String[] args) {
+
+		for (int i = 1;; i++) {
+			System.out.println(">>>>>>>>>> i = " + i);
+
+			new Thread(() -> {
+				try {
+					Thread.sleep(Integer.MAX_VALUE);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
+			}, "" + i).start();
+		}
+	}
+
+}
+
+```
+
+## 7.4 ref
+
+```java
+package com.duoduo.study.jvm.ref;
+
+import java.lang.ref.PhantomReference;
+import java.lang.ref.ReferenceQueue;
+
+/**
+ * java提供了四种引用类型，在垃圾回收的时候，都有自己的特点。
+ * ReferenceQueue是用来配合引用工作的，没有ReferenceQueue一样可以运行。
+ * 
+ * 创建引用的时候可以指定关联的队列，当GC释放对象内存的时候，会将引用加入到引用队列，
+ * 如果程序发现某个虚引用已经被加入到引用队列，那么就可以在所引用的对象的内存被回收之前采取必要的行动，
+ * 这相当于是一种通知机制。
+ * 当关联的引用队列中有数据的时候，意味着引用指向的堆内存中的对象被回收。
+ * 通过这种方式，JVM允许我们在对象被销毁后做一些我们自己想做的事情。
+ */
+public class PhantomReferenceDemo {
+
+	public static void main(String[] args) throws InterruptedException {
+		Object o1 = new Object();
+
+		ReferenceQueue<Object> referenceQueue = new ReferenceQueue<Object>();
+		PhantomReference<Object> phantomReference = new PhantomReference<Object>(o1, referenceQueue);
+
+		System.out.println(o1);
+		System.out.println(phantomReference.get());
+		System.out.println(referenceQueue.poll());
+
+		System.out.println("------------------------------");
+		o1 = null;
+		System.gc();
+
+		Thread.sleep(500);
+
+		System.out.println(o1);
+		System.out.println(phantomReference.get());
+		System.out.println(referenceQueue.poll());
+	}
+
+}
+
+```
+
+```java
+package com.duoduo.study.jvm.ref;
+
+import java.lang.ref.ReferenceQueue;
+import java.lang.ref.WeakReference;
+
+public class ReferenceQueueDemo {
+
+	public static void main(String[] args) throws InterruptedException {
+		Object o1 = new Object();
+		ReferenceQueue<Object> referenceQueue = new ReferenceQueue<Object>();
+		WeakReference<Object> weakReference = new WeakReference<Object>(o1, referenceQueue);
+
+		System.out.println(o1);
+		System.out.println(weakReference.get());
+		System.out.println(referenceQueue.poll());
+
+		System.out.println("------------------------------");
+		o1 = null;
+		System.gc();
+
+		Thread.sleep(500);
+
+		System.out.println(o1);
+		System.out.println(weakReference.get());
+		System.out.println(referenceQueue.poll());
+	}
+
+}
+
+```
+
+```java
+package com.duoduo.study.jvm.ref;
+
+import java.lang.ref.SoftReference;
+
+public class SoftReferenceDemo {
+
+	// 内存够用的时候就保留，不够用就回收！
+	public static void softRefMemoryEnough() {
+		Object o1 = new Object();
+		SoftReference<Object> softReference = new SoftReference<Object>(o1);
+		System.out.println(o1);
+		System.out.println(softReference.get());
+
+		o1 = null;
+		System.gc();
+
+		System.out.println(o1);
+		System.out.println(softReference.get());
+	}
+
+	/**
+	 * JVM配置，故意产生大对象并配置小内存，让它内存不够用了导致OOM，看软引用的回收情况
+	 * -Xms5m -Xmx5m -XX:+PrintGCDetails
+	 */
+	public static void softRefMemoryNotEnough() {
+		Object o1 = new Object();
+		SoftReference<Object> softReference = new SoftReference<Object>(o1);
+		System.out.println(o1);
+		System.out.println(softReference.get());
+
+		o1 = null;
+
+		try {
+			byte[] bytes = new byte[30 * 1024 * 1024];
+			System.out.println(bytes);
+		} catch (Exception e) {
+			// Exception in thread "main" java.lang.OutOfMemoryError: Java heap space
+			e.printStackTrace();
+		} finally {
+			System.out.println(o1);
+			System.out.println(softReference.get());
+		}
+	}
+
+	public static void main(String[] args) {
+		// softRefMemoryEnough();
+
+		softRefMemoryNotEnough();
+	}
+
+}
+
+```
+
+```java
+package com.duoduo.study.jvm.ref;
+
+public class StrongReferenceDemo {
+
+	public static void main(String[] args) {
+		// 这样定义的默认就是强引用
+		Object obj1 = new Object();
+		// obj2引用赋值
+		Object obj2 = obj1;
+		obj1 = null;
+		System.gc();
+		System.out.println(obj2);
+	}
+
+}
+
+```
+
+```java
+package com.duoduo.study.jvm.ref;
+
+import java.util.HashMap;
+import java.util.WeakHashMap;
+
+public class WeakHashMapDemo {
+
+	public static void main(String[] args) {
+		myHashMap();
+
+		myWeakHashMap();
+	}
+
+	public static void myHashMap() {
+		HashMap<Integer, String> map = new HashMap<Integer, String>();
+		Integer key = new Integer(1);
+		String value = "HashMap";
+
+		map.put(key, value);
+		System.out.println(map);
+
+		key = null;
+		System.out.println(map);
+
+		System.gc();
+		System.out.println(map + "\t" + map.size());
+	}
+
+	public static void myWeakHashMap() {
+		WeakHashMap<Integer, String> map = new WeakHashMap<Integer, String>();
+		Integer key = new Integer(2);
+		String value = "WeakHashMap";
+
+		map.put(key, value);
+		System.out.println(map);
+
+		key = null;
+		System.out.println(map);
+
+		System.gc();
+		System.out.println(map + "\t" + map.size());
+	}
+
+}
+
+```
+
+```java
+package com.duoduo.study.jvm.ref;
+
+import java.lang.ref.WeakReference;
+
+public class WeakReferenceDemo {
+
+	public static void main(String[] args) {
+		Object o1 = new Object();
+		WeakReference<Object> weakReference = new WeakReference<Object>(o1);
+		System.out.println(o1);
+		System.out.println(weakReference.get());
+
+		o1 = null;
+		System.gc();
+		System.out.println("------------------------------");
+
+		System.out.println(o1);
+		System.out.println(weakReference.get());
+	}
+
+}
+
+```
+
